@@ -1,9 +1,10 @@
 from datetime import datetime
 from bitarray import bitarray
-from typing import Generator, List, Any
+from typing import Generator
 from bitarray.util import zeros, ones
+
 # from itertools import islice
-from timeit import timeit, Timer
+from timeit import Timer
 
 
 def next_cards_iterative(images: int, unused: list, card=None) -> list:
@@ -71,7 +72,6 @@ def add_card(card, unused):
 
 
 def deck_iterator(images_per_card, deck=None, unused=None, verbose=0, attempts=0):
-
     if deck is None:
         deck = []
 
@@ -186,12 +186,11 @@ def card_generator(image_count: int, mask: int) -> int:
         card += 1
 
 
-
 def build_deck_bitmasks(images: int) -> list[int]:
     """Build deck using an array of bitarrays, and bitmasks."""
     deck_size = (images - 1) * images + 1  # also the size each card needs to be
     deck_masks = []
-    deck = [0 for _ in range(deck_size)] # the number of images for each card
+    deck = [0 for _ in range(deck_size)]  # the number of images for each card
     usages_of_image = [0 for _ in range(deck_size)]
 
     card_generators = []
@@ -216,6 +215,7 @@ def build_deck_bitmasks(images: int) -> list[int]:
 
     return deck
 
+
 def build_deck_bitarrays(images: int) -> list[bitarray]:
     size = (images - 1) * images + 1  # size of the deck, and size of each card
 
@@ -234,7 +234,7 @@ def build_deck_bitarrays(images: int) -> list[bitarray]:
         if deck[c].count(1):  # these masks can be skipped if current card is blank
             # only include bits to the right of the rightmost set bit in current card
             mask_rightmost = zeros(size)
-            mask_rightmost[deck[c].find(1, right=True) + 1:] = 1
+            mask_rightmost[deck[c].find(1, right=True) + 1 :] = 1
             masks.append(mask_rightmost)
 
             # mask off all bits that have already been used size times
@@ -257,17 +257,18 @@ def build_deck_bitarrays(images: int) -> list[bitarray]:
             c += 1
             mask_usages = bitarray((value != images for value in count_of_usages))
 
-
     return deck
 
-def card_generator_bitarrays(images: int, deck: list[bitarray]) -> Generator[bitarray, None, None]:
+
+def card_generator_bitarrays(
+    images: int, deck: list[bitarray]
+) -> Generator[bitarray, None, None]:
     deck_size = (images - 1) * images + 1
     card = zeros(deck_size)
 
     mask = ones(deck_size)  # ones where bits can be placed
 
     while card.count() < images:
-
         next_bit = zeros(deck_size)
         next_bit[card.find(1, right=True) + 1] = 1
         pass
@@ -279,12 +280,17 @@ def time1():
             deck = [card.search(1) for card in build_deck_bitarrays(i)]
             print(f"{i}-deck succeeded")
             deck2 = build_deck_iterqueue(i)
-            print("Identical to iterqueue" if deck == deck2 else "Different from iterqueue")
+            print(
+                "Identical to iterqueue"
+                if deck == deck2
+                else "Different from iterqueue"
+            )
         except AssertionError:
             print(f"{i}-deck failed", end="\r")
 
     # Decks under 100 that work without backtracking:
     #
+
 
 def time2():
     for i in range(2, 50):
@@ -292,7 +298,11 @@ def time2():
             deck = [card.search(1) for card in build_deck_bitarrays(i)]
             print(f"{i}-deck succeeded")
             deck2 = build_deck_iterqueue(i)
-            print("Identical to iterqueue" if deck == deck2 else "Different from iterqueue")
+            print(
+                "Identical to iterqueue"
+                if deck == deck2
+                else "Different from iterqueue"
+            )
         except AssertionError:
             print(f"{i}-deck failed")
 
@@ -306,6 +316,7 @@ def main():
 
     print(min(a))
     print(min(b))
+
 
 if __name__ == "__main__":
     main()
