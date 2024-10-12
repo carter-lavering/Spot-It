@@ -273,7 +273,7 @@ def card_generator_bitarrays(images: int, deck: list[bitarray]) -> Generator[bit
         pass
 
 
-def main():
+def time1():
     for i in range(2, 50):
         try:
             deck = [card.search(1) for card in build_deck_bitarrays(i)]
@@ -286,7 +286,7 @@ def main():
     # Decks under 100 that work without backtracking:
     #
 
-def main2():
+def time2():
     for i in range(2, 50):
         try:
             deck = [card.search(1) for card in build_deck_bitarrays(i)]
@@ -300,10 +300,12 @@ def main2():
     #
 
 
-
-if __name__ == "__main__":
-    a = Timer("main()", globals=globals()).repeat(20, 1)
-    b = Timer("main2()", globals=globals()).repeat(20, 1)
+def main():
+    a = Timer("time1()", globals=globals()).repeat(20, 1)
+    b = Timer("time2()", globals=globals()).repeat(20, 1)
 
     print(min(a))
     print(min(b))
+
+if __name__ == "__main__":
+    main()
