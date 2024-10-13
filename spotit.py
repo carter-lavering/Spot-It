@@ -1,10 +1,11 @@
 from datetime import datetime
-from bitarray import bitarray
-from typing import Generator
-from bitarray.util import zeros, ones
 
 # from itertools import islice
 from timeit import Timer
+from typing import Generator
+
+from bitarray import bitarray
+from bitarray.util import ones, zeros
 
 
 def next_cards_iterative(images: int, unused: list, card=None) -> list:
