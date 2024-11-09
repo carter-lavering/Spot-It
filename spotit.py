@@ -706,6 +706,148 @@ def build_deck_v3(
         return None
 
 
+def build_deck_v4(
+    images: int, *, early_stop_size: int = None, backtrack: bool = True
+) -> list[list[int]] | None:
+    time_start = datetime.now()
+    card_size = (images - 1) * images + 1  # size of each card (number of unique images)
+
+    if early_stop_size is None:
+        deck_size = card_size
+    else:
+        deck_size = min(card_size, early_stop_size)
+
+    deck = [bitarray(card_size) for _ in range(deck_size)]
+    c = 0  # index of current card
+    count_of_usages: list[int] = [0 for _ in range(card_size)]
+    mask_usages = ones(card_size)
+    mask = ones(card_size)
+    lowest_card_backtracked = card_size
+    highest_card_backtracked = 0
+    max_card_reached = 0
+    cleared_card_count = [0] * deck_size
+    known_bad_cards = set()
+    cache_hits = 0
+
+    while c < deck_size:
+        # step 1: mask off unusable values
+
+        if not deck[c].any():
+            # we're on a blank card, reset mask
+            mask = mask_usages.copy()
+
+        elif deck[c].count(1) < images:
+            # mask off all bits to the left of rightmost bit (inclusive)
+            rightmost_bit = deck[c].find(1, right=True) + 1  # +1 because inclusive
+            mask &= zeros(rightmost_bit) + ones(card_size - rightmost_bit)
+
+            # only allow bits that haven't appeared in any of the same cards as this card's other bits
+            for mask_card in deck[:c]:
+                if any_and(mask_card, deck[c]):  # if mask_card and c share any bits
+                    mask &= ~mask_card  # get rid of the rest of the bits in mask_card
+
+        elif deck[c].count(1) == images:
+            if c < deck_size - 1:
+                # finished card isn't the last card
+                # print(f"({images}) Card {c} filled: {datetime.now() - time_start}")
+                c += 1
+                if c > max_card_reached:
+                    max_card_reached = c
+                    print(
+                        f"({images}) Card {c} of {deck_size} reached: {datetime.now() - time_start}"
+                    )
+                continue
+            else:
+                break
+
+        else:
+            print("Something has gone terribly wrong")
+
+        # now that we've filtered, let's check to see if we have any possible bits
+        if c >= images:
+            mask_nth_bit = deck[deck[c].count()]
+        else:
+            mask_nth_bit = ones(card_size)
+
+        if mask.count() + deck[c].count() >= images:
+            next_bits_generator = (mask & mask_nth_bit).search(1)
+        else:
+            next_bits_generator = []
+
+        # next_bits_generator = mask.itersearch(1)
+
+        for next_bit in next_bits_generator:
+            # try a bit from the mask
+            deck[c][next_bit] = 1
+            if ba2int(deck[c]) not in known_bad_cards:
+                # card is good (potentially)
+                count_of_usages[next_bit] += 1
+                if count_of_usages[next_bit] == images:
+                    mask_usages[next_bit] = 0
+                break
+            else:
+                # already seen this exact card before and needed to backtrack
+                # we reset the bit and move on to the next generated one
+                cache_hits += 1
+                deck[c][next_bit] = 0
+
+        else:  # no good bits found, need to backtrack
+            # everything in this block only triggers if there are no new good bits
+            if deck[c].any():
+                card_as_int = ba2int(deck[c])
+                if card_as_int not in known_bad_cards:
+                    # print(f"Card {c} {deck[c]} is bad, new")
+                    known_bad_cards.add(ba2int(deck[c]))
+                else:
+                    print(f"Card {c} {deck[c]} is bad, seen before")
+                    cache_hits += 1
+                    pass
+
+            if not deck[c].any():
+                if c > images * 2:
+                    # we haven't backtracked too far
+                    cleared_card_count[c] += 1
+                    print(
+                        lowest_card_backtracked,
+                        cleared_card_count[
+                            lowest_card_backtracked:highest_card_backtracked
+                        ],
+                        end="\r",
+                    )
+                    lowest_card_backtracked = min(c, lowest_card_backtracked)
+                    highest_card_backtracked = max(c, highest_card_backtracked)
+                    c -= 1
+                else:
+                    # we've backtracked to the first two levels of the deck. it's ogre
+                    deck = None
+                    break
+                # current card is empty
+
+            mask = mask_usages.copy()
+            rightmost_bit = deck[c].find(1, right=True)
+            deck[c][rightmost_bit] = 0
+            count_of_usages[rightmost_bit] -= 1
+            if count_of_usages[rightmost_bit] == images - 1:
+                mask_usages[rightmost_bit] = 1
+            mask[: rightmost_bit + 1] = 0
+
+        # end of while loop
+        pass
+
+    print()
+    print(f"{len(known_bad_cards)} known bad cards cached")
+    print(f"{cache_hits} known bad cards skipped")
+    # print(
+    #     "Card backtrack counts: {}".format(
+    #         [(i, count) for i, count in enumerate(cleared_card_count) if count > 0]
+    #     )
+    # )
+    if deck:
+        return [c.search(1) for c in deck]
+    else:
+        return None
+
+
 def main():
     max_images = 12
     result_decks = []
