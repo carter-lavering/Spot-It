@@ -139,9 +139,13 @@ def check_deck(deck) -> bool:
             while len(usages) < i + 1:
                 usages.append(0)
             usages[i] += 1
-    if not all(u == images for u in usages):
-        usages_check = False
-    print("Passed" if usages_check else "Failed")
+    max_usages_check = all(u <= images for u in usages)
+    exact_usages_check = all(u == images for u in usages)
+    print(
+        "Passed perfectly"
+        if exact_usages_check
+        else ("Passed (incomplete deck)" if max_usages_check else "Failed")
+    )
 
     return length_check and usages_check
 
@@ -728,28 +732,40 @@ def build_deck_v4(
     cleared_card_count = [0] * deck_size
     known_bad_cards = set()
     cache_hits = 0
+    collisions_by_images = [bitarray(card_size) for _ in range(card_size)]
 
     while c < deck_size:
         # step 1: mask off unusable values
+        images_on_card = deck[c].count(1)
 
-        if not deck[c].any():
+        if images_on_card == 0:
             # we're on a blank card, reset mask
             mask = mask_usages.copy()
+            more_efficient_mask = mask_usages.copy()
 
-        elif deck[c].count(1) < images:
+        elif images_on_card < images:
             # mask off all bits to the left of rightmost bit (inclusive)
             rightmost_bit = deck[c].find(1, right=True) + 1  # +1 because inclusive
-            mask &= zeros(rightmost_bit) + ones(card_size - rightmost_bit)
+            mask[0:rightmost_bit] = 0
+            more_efficient_mask[0:rightmost_bit] = 0
 
             # only allow bits that haven't appeared in any of the same cards as this card's other bits
-            for mask_card in deck[:c]:
-                if any_and(mask_card, deck[c]):  # if mask_card and c share any bits
-                    mask &= ~mask_card  # get rid of the rest of the bits in mask_card
+            # for mask_card in deck[:c]:
+            #     if any_and(mask_card, deck[c]):  # if mask_card and c share any bits
+            #         mask &= ~mask_card  # get rid of the rest of the bits in mask_card
 
-        elif deck[c].count(1) == images:
+            for i in deck[c].search(1):
+                more_efficient_mask &= ~collisions_by_images[i]
+
+            # assert mask == more_efficient_mask
+            mask = more_efficient_mask
+
+        elif images_on_card == images:
             if c < deck_size - 1:
                 # finished card isn't the last card
                 # print(f"({images}) Card {c} filled: {datetime.now() - time_start}")
+                for i in deck[c].search(1):
+                    collisions_by_images[i] |= deck[c]
                 c += 1
                 if c > max_card_reached:
                     max_card_reached = c
@@ -817,19 +833,23 @@ def build_deck_v4(
                     lowest_card_backtracked = min(c, lowest_card_backtracked)
                     highest_card_backtracked = max(c, highest_card_backtracked)
                     c -= 1
+                    for i in deck[c].search(1):
+                        collisions_by_images[i] ^= deck[c]
                 else:
                     # we've backtracked to the first two levels of the deck. it's ogre
                     deck = None
                     break
                 # current card is empty
 
-            mask = mask_usages.copy()
+            # mask = mask_usages.copy()
+            more_efficient_mask = mask_usages.copy()
             rightmost_bit = deck[c].find(1, right=True)
             deck[c][rightmost_bit] = 0
             count_of_usages[rightmost_bit] -= 1
             if count_of_usages[rightmost_bit] == images - 1:
                 mask_usages[rightmost_bit] = 1
             mask[: rightmost_bit + 1] = 0
+            more_efficient_mask[: rightmost_bit + 1] = 0
 
         # end of while loop
         pass
@@ -843,21 +863,38 @@ def build_deck_v4(
     #     )
     # )
     if deck:
-        return [c.search(1) for c in deck]
+        return [list(c.search(1)) for c in deck]
     else:
         return None
 
 
 def main():
-    max_images = 12
+    images = [99]
+    # deck_functions = [build_deck_v1, build_deck_v2, build_deck_v3, build_deck_v4]
+    deck_functions = [build_deck_v4]
     result_decks = []
-    for images in range(2, max_images):
-        print(f"Making {images}-deck...")
-        time_start = datetime.now()
-        result_decks.append(build_deck_v3(images))
-        time_end = datetime.now()
-        time_duration = time_end - time_start
-        print(f"Done computing in {time_duration} seconds")
+    result_times = []
+    try:
+        for i in images:
+            print(f"Making {i}-deck...")
+            result_decks.append([])
+            result_times.append([])
+            for f in deck_functions:
+                time_start = datetime.now()
+                deck = f(i)
+                time_end = datetime.now()
+                result_decks[-1].append(deck)
+                result_times[-1].append(time_end - time_start)
+            result_decks
+
+    except KeyboardInterrupt:
+        print("Keyboard interrupted")
+    
+    print("\t" + "\t".join(f.__name__ for f in deck_functions))
+
+    for i, times, decks in zip(images, result_times, result_decks):
+        print(f"{i:2}-deck", end="\t")
+        print("\t".join(str(t) for t in times))
 
 
 if __name__ == "__main__":
