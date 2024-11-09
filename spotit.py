@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Generator
+from timeout import timeout
 
 from bitarray import bitarray
 from bitarray.util import ba2int, ones, zeros, any_and
@@ -815,7 +816,7 @@ def build_deck_v4(
                     # print(f"Card {c} {deck[c]} is bad, new")
                     known_bad_cards.add(ba2int(deck[c]))
                 else:
-                    print(f"Card {c} {deck[c]} is bad, seen before")
+                    # print(f"Card {c} {list(deck[c].search(1))} is bad, seen before")
                     cache_hits += 1
                     pass
 
@@ -867,9 +868,16 @@ def build_deck_v4(
     else:
         return None
 
+def comprehensible(images: int, card: bitarray) -> list[int]:
+    result = []
+    for i in range(images):
+        result.append((card << (images * i)).find(1))
+    return result
+
 
 def main():
-    images = [99]
+    images = range(2, 14)
+    time_limit = 60  # seconds
     # deck_functions = [build_deck_v1, build_deck_v2, build_deck_v3, build_deck_v4]
     deck_functions = [build_deck_v4]
     result_decks = []
@@ -880,21 +888,27 @@ def main():
             result_decks.append([])
             result_times.append([])
             for f in deck_functions:
-                time_start = datetime.now()
-                deck = f(i)
-                time_end = datetime.now()
-                result_decks[-1].append(deck)
-                result_times[-1].append(time_end - time_start)
+                try:
+                    time_start = datetime.now()
+                    # with timeout(time_limit):
+                    deck = f(i)
+                    time_end = datetime.now()
+                    result_decks[-1].append(deck)
+                    result_times[-1].append(time_end - time_start)
+                except TimeoutError:
+                    result_decks[-1].append(None)
+                    result_times[-1].append(None)
             result_decks
 
     except KeyboardInterrupt:
         print("Keyboard interrupted")
     
+    print()
     print("\t" + "\t".join(f.__name__ for f in deck_functions))
 
     for i, times, decks in zip(images, result_times, result_decks):
         print(f"{i:2}-deck", end="\t")
-        print("\t".join(str(t) for t in times))
+        print("\t".join(str(t) for t in times), decks[0] != None)
 
 
 if __name__ == "__main__":
