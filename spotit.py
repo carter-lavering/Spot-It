@@ -118,7 +118,11 @@ def deck_iterator(images_per_card, deck=None, unused=None, verbose=0, attempts=0
         yield deck
 
 
-def check_deck(deck) -> bool:
+def check_deck(deck: list[list[int]] | None) -> bool:
+    if deck is None:
+        print("Deck is None")
+        return False
+
     if not len(deck):
         print("Deck is empty")
         return False
@@ -712,7 +716,7 @@ def build_deck_v3(
 
 
 def build_deck_v4(
-    images: int, *, early_stop_size: int = None, backtrack: bool = True
+    images: int, *, early_stop_size: int | None = None, backtrack: bool = True
 ) -> list[list[int]] | None:
     time_start = datetime.now()
     card_size = (images - 1) * images + 1  # size of each card (number of unique images)
@@ -750,6 +754,7 @@ def build_deck_v4(
 
             # only allow bits that haven't appeared in any of the same cards as this card's other bits
 
+            mask_test = mask.copy()
             mask_changed_list = []
             mask_unchanged_list = []
             for i in deck[c].search(1):
@@ -759,7 +764,170 @@ def build_deck_v4(
                     mask_changed_list.append(i)
                 else:
                     mask_unchanged_list.append(i)
-            print(f"{mask_unchanged_list=}, {mask_changed_list=}")
+            print(f"{mask_changed_list=}")
+            last_card_bit = deck[c].find(1, right=True)
+            mask_test &= ~collisions_by_images[last_card_bit]
+            # assert mask == mask_test
+
+        elif images_on_card == images:
+            if c < deck_size - 1:
+                # finished card isn't the last card
+                # print(f"({images}) Card {c} filled: {datetime.now() - time_start}")
+                for i in deck[c].search(1):
+                    collisions_by_images[i] |= deck[c]
+                c += 1
+                if c > max_card_reached:
+                    max_card_reached = c
+                    print(
+                        f"({images}) Card {c} of {deck_size} reached: {datetime.now() - time_start}"
+                    )
+                continue
+            else:
+                break
+
+        else:
+            print("Something has gone terribly wrong")
+
+        # now that we've filtered, let's check to see if we have any possible bits
+        if c >= images:
+            mask_nth_bit = deck[deck[c].count()]
+        else:
+            mask_nth_bit = ones(card_size)
+
+        if mask.count() + deck[c].count() >= images:
+            next_bits_generator = (mask & mask_nth_bit).search(1)
+        else:
+            next_bits_generator = []
+
+        # next_bits_generator = mask.itersearch(1)
+
+        for next_bit in next_bits_generator:
+            # try a bit from the mask
+            deck[c][next_bit] = 1
+            if ba2int(deck[c]) not in known_bad_cards:
+                # card is good (potentially)
+                count_of_usages[next_bit] += 1
+                if count_of_usages[next_bit] == images:
+                    mask_usages[next_bit] = 0
+                break
+            else:
+                # already seen this exact card before and needed to backtrack
+                # we reset the bit and move on to the next generated one
+                cache_hits += 1
+                deck[c][next_bit] = 0
+
+        else:  # no good bits found, need to backtrack
+            # everything in this block only triggers if there are no new good bits
+            if deck[c].any():
+                card_as_int = ba2int(deck[c])
+                if card_as_int not in known_bad_cards:
+                    # print(f"Card {c} {deck[c]} is bad, new")
+                    known_bad_cards.add(ba2int(deck[c]))
+                else:
+                    # print(f"Card {c} {list(deck[c].search(1))} is bad, seen before")
+                    cache_hits += 1
+                    pass
+
+            if not deck[c].any():
+                if c > images * 2:
+                    # we haven't backtracked too far
+                    cleared_card_count[c] += 1
+                    print(
+                        lowest_card_backtracked,
+                        cleared_card_count[
+                            lowest_card_backtracked:highest_card_backtracked
+                        ],
+                        end="\r",
+                    )
+                    lowest_card_backtracked = min(c, lowest_card_backtracked)
+                    highest_card_backtracked = max(c, highest_card_backtracked)
+                    c -= 1
+                    for i in deck[c].search(1):
+                        collisions_by_images[i] ^= deck[c]
+                else:
+                    # we've backtracked to the first two levels of the deck. it's ogre
+                    deck = None
+                    break
+                # current card is empty
+
+            mask = mask_usages.copy()
+            rightmost_bit = deck[c].find(1, right=True)
+            deck[c][rightmost_bit] = 0
+            count_of_usages[rightmost_bit] -= 1
+            if count_of_usages[rightmost_bit] == images - 1:
+                mask_usages[rightmost_bit] = 1
+            mask[: rightmost_bit + 1] = 0
+
+        # end of while loop
+        pass
+
+    print()
+    print(f"{len(known_bad_cards)} known bad cards cached")
+    print(f"{cache_hits} known bad cards skipped")
+    # print(
+    #     "Card backtrack counts: {}".format(
+    #         [(i, count) for i, count in enumerate(cleared_card_count) if count > 0]
+    #     )
+    # )
+    if deck:
+        return [list(c.search(1)) for c in deck]
+    else:
+        return None
+
+
+def build_deck_v5(
+    images: int, *, early_stop_size: int | None = None, backtrack: bool = True
+) -> list[list[int]] | None:
+    time_start = datetime.now()
+    card_size = (images - 1) * images + 1  # size of each card (number of unique images)
+
+    if early_stop_size is None:
+        deck_size = card_size
+    else:
+        deck_size = min(card_size, early_stop_size)
+
+    deck = [bitarray(card_size) for _ in range(deck_size)]
+    c = 0  # index of current card
+    count_of_usages: list[int] = [0 for _ in range(card_size)]
+    mask_usages = ones(card_size)
+    mask = ones(card_size)
+    lowest_card_backtracked = card_size
+    highest_card_backtracked = 0
+    max_card_reached = 0
+    cleared_card_count = [0] * deck_size
+    known_bad_cards = set()
+    cache_hits = 0
+    collisions_by_images = [bitarray(card_size) for _ in range(card_size)]
+
+    while c < deck_size:
+        # step 1: mask off unusable values
+        images_on_card = deck[c].count(1)
+
+        if images_on_card == 0:
+            # we're on a blank card, reset mask
+            mask = mask_usages.copy()
+
+        elif images_on_card < images:
+            # mask off all bits to the left of rightmost bit (inclusive)
+            rightmost_bit = deck[c].find(1, right=True) + 1  # +1 because inclusive
+            mask[0:rightmost_bit] = 0
+
+            # only allow bits that haven't appeared in any of the same cards as this card's other bits
+
+            mask_test = mask.copy()
+            mask_changed_list = []
+            mask_unchanged_list = []
+            for i in deck[c].search(1):
+                mask_prev = mask.copy()
+                mask &= ~collisions_by_images[i]
+                if mask != mask_prev:
+                    mask_changed_list.append(i)
+                else:
+                    mask_unchanged_list.append(i)
+            print(f"{mask_changed_list=}")
+            last_card_bit = deck[c].find(1, right=True)
+            mask_test &= ~collisions_by_images[last_card_bit]
+            # assert mask == mask_test
 
         elif images_on_card == images:
             if c < deck_size - 1:
@@ -875,7 +1043,7 @@ def comprehensible(images: int, card: bitarray) -> list[int]:
 
 
 def main():
-    images = [33]
+    images = [4]
     time_limit = 60  # seconds
     # deck_functions = [build_deck_v1, build_deck_v2, build_deck_v3, build_deck_v4]
     deck_functions = [build_deck_v4]
@@ -897,7 +1065,6 @@ def main():
                 except TimeoutError:
                     result_decks[-1].append(None)
                     result_times[-1].append(None)
-            result_decks
 
     except KeyboardInterrupt:
         print("Keyboard interrupted")
@@ -907,7 +1074,7 @@ def main():
 
     for i, times, decks in zip(images, result_times, result_decks):
         print(f"{i:2}-deck", end="\t")
-        print("\t".join(str(t) for t in times), decks[0] != None)
+        print("\t".join(str(t) for t in times), decks[0] is not None)
 
 
 if __name__ == "__main__":
