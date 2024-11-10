@@ -742,24 +742,24 @@ def build_deck_v4(
         if images_on_card == 0:
             # we're on a blank card, reset mask
             mask = mask_usages.copy()
-            more_efficient_mask = mask_usages.copy()
 
         elif images_on_card < images:
             # mask off all bits to the left of rightmost bit (inclusive)
             rightmost_bit = deck[c].find(1, right=True) + 1  # +1 because inclusive
             mask[0:rightmost_bit] = 0
-            more_efficient_mask[0:rightmost_bit] = 0
 
             # only allow bits that haven't appeared in any of the same cards as this card's other bits
-            # for mask_card in deck[:c]:
-            #     if any_and(mask_card, deck[c]):  # if mask_card and c share any bits
-            #         mask &= ~mask_card  # get rid of the rest of the bits in mask_card
 
+            mask_changed_list = []
+            mask_unchanged_list = []
             for i in deck[c].search(1):
-                more_efficient_mask &= ~collisions_by_images[i]
-
-            # assert mask == more_efficient_mask
-            mask = more_efficient_mask
+                mask_prev = mask.copy()
+                mask &= ~collisions_by_images[i]
+                if mask != mask_prev:
+                    mask_changed_list.append(i)
+                else:
+                    mask_unchanged_list.append(i)
+            print(f"{mask_unchanged_list=}, {mask_changed_list=}")
 
         elif images_on_card == images:
             if c < deck_size - 1:
@@ -842,15 +842,13 @@ def build_deck_v4(
                     break
                 # current card is empty
 
-            # mask = mask_usages.copy()
-            more_efficient_mask = mask_usages.copy()
+            mask = mask_usages.copy()
             rightmost_bit = deck[c].find(1, right=True)
             deck[c][rightmost_bit] = 0
             count_of_usages[rightmost_bit] -= 1
             if count_of_usages[rightmost_bit] == images - 1:
                 mask_usages[rightmost_bit] = 1
             mask[: rightmost_bit + 1] = 0
-            more_efficient_mask[: rightmost_bit + 1] = 0
 
         # end of while loop
         pass
@@ -868,6 +866,7 @@ def build_deck_v4(
     else:
         return None
 
+
 def comprehensible(images: int, card: bitarray) -> list[int]:
     result = []
     for i in range(images):
@@ -876,7 +875,7 @@ def comprehensible(images: int, card: bitarray) -> list[int]:
 
 
 def main():
-    images = range(2, 14)
+    images = [33]
     time_limit = 60  # seconds
     # deck_functions = [build_deck_v1, build_deck_v2, build_deck_v3, build_deck_v4]
     deck_functions = [build_deck_v4]
@@ -902,7 +901,7 @@ def main():
 
     except KeyboardInterrupt:
         print("Keyboard interrupted")
-    
+
     print()
     print("\t" + "\t".join(f.__name__ for f in deck_functions))
 
